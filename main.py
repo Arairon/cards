@@ -198,6 +198,9 @@ class Connector:
             print(e)
             self.print(e)
 
+    def stop(self):
+        self.root.destroy()
+
 
 def dsel():
     return strcls(f'card_{ConMenu.cardType.get()}{ConMenu.cardNum.get()}')
@@ -326,7 +329,7 @@ def plrID(id):
             return i
 
     print('plrID failed!')
-    return 'plrID failed!'
+    return f'plrID({id}) failed!'
 
 
 def gmEncode(type='full'):
@@ -533,8 +536,13 @@ url = serverUrl + 'pyLib/cards/'
 if not os.path.isdir('.cardAssets'): os.mkdir('.cardAssets')
 os.chdir('.cardAssets')
 print('Updating asset list')
-r = requests.get((url + 'AssetList.txt'), allow_redirects=True)
-open(f'AssetList.txt', 'wb').write(r.content)
+try:
+    r = requests.get((url + 'AssetList.txt'), allow_redirects=True)
+    open(f'AssetList.txt', 'wb').write(r.content)
+except:
+    print('error getting asset list')
+    dprint('error getting asset list')
+    open(f'AssetList.txt', 'wb').write('\n').flush().close()
 with open('AssetList.txt', 'r') as assetList:
     fileList = assetList.readlines()
     for i in fileList:
@@ -565,6 +573,8 @@ dudeMove = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 
 cardHL = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'CardHighlight.png')).convert_alpha(),
                                 cardSize)
 cardBack = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'cardBack.png')).convert_alpha(),
+                                cardSize)
+beatenButImg = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'beatenButton.png')).convert_alpha(),
                                 cardSize)
 tahoma = pygame.font.Font(r'.cardAssets\tahoma.ttf', 17)
 bombard = pygame.font.Font(r'.cardAssets\bombard.ttf', 20)
@@ -610,6 +620,9 @@ def reloadAv():
     except:
         pass
 
+x,y = uiRightbar.x, uiRightbar.y
+deckX, deckY = (x + (uiRightbar.width/2))-(cardSize[1]/2), y+100
+beatenB = pygame.Rect(deckX, deckY+350, cardSize[0], cardSize[1])
 
 def winUpd():
     global LocalPlayer
@@ -661,7 +674,10 @@ def winUpd():
         trumpcard = getCard(game.trump)
         root.blit(trumpcard.img, (deckX, deckY-(cardSize[1]/2)+10))
     root.blit(cardBack, (deckX, deckY))
-    draw_text(f'{len(game.deck)}+1', root, deckX+(cardSize[0]/2)-(len(f'{len(game.deck)}+1')*6), deckY+15, pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('00EEEE'))
+    draw_text(f'{len(game.deck)}', root, deckX+(cardSize[0]/2)-(len(f'{len(game.deck)}')*6), deckY+15, pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('00EEEE'))
+    root.blit(beatenButImg, (beatenB.x, beatenB.y))
+    draw_text(f'{len(game.discarded)}', root, deckX + (cardSize[0] / 2) - (len(f'{len(game.deck)}') * 6), deckY + 365,
+              pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('ff4336'))
 
     for i in ContextMenu.instances:
         if i.active: i.draw()
@@ -754,6 +770,7 @@ dButs = [
 menu = ContextMenu(buttons, dButs)
 
 def hexc(st):
+    if st[0] == '#': list(st).pop(0).join()
     st = st.lower()
     if len(st) == 1: st = st * 6
     if len(st) == 3: st = st * 3
@@ -764,7 +781,7 @@ def hexc(st):
 
 def test():
     gmDecode(
-        'FullState:::Arai-1|B-2|Я-3:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
+        'FullState:::Arai-1|B-2|Я-3:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|s13>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
 
 
 def main():
