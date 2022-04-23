@@ -530,6 +530,7 @@ def Decode(msg):
 rootDir = os.getcwd()
 filesInvalid = False
 url = serverUrl + 'pyLib/cards/'
+if not os.path.isdir('.cardAssets'): os.mkdir('.cardAssets')
 os.chdir('.cardAssets')
 print('Updating asset list')
 r = requests.get((url + 'AssetList.txt'), allow_redirects=True)
