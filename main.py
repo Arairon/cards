@@ -218,7 +218,7 @@ def gsend(text):
 
 ConMenu = Connector()
 
-thread.Thread(target=ConMenu.run).start()
+thread.Thread(target=ConMenu.run, daemon=True).start()
 
 global RUN
 
