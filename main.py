@@ -1,10 +1,14 @@
 import pygame
 import threading as thread
+from pathlib import Path
+from time import sleep
 import requests
 from tkinter import *
+import random
 import socket
 import sys
 import os
+
 
 global me
 global serverUrl
@@ -13,6 +17,9 @@ serverUrl = "http://arairon.xyz/"
 
 def strcls(classname):
     return getattr(sys.modules[__name__], classname)
+
+def getPar(s):
+    return s[s.find("(") + 1:s.find(")")]
 
 
 def exit():
@@ -23,6 +30,12 @@ def exit():
     except Exception as e:
         print(e)
 
+global KillListeners
+KillListeners = False
+
+def killLis():
+    global KillListeners
+    KillListeners = True
 
 class ch:
     def __init__(self, host, port, name):
@@ -52,7 +65,8 @@ class ch:
 
     def listen(self):
         s = self.s
-        while True:
+        global KillListeners
+        while not KillListeners:
             try:
                 msg = s.recv(1024)
                 try:
@@ -72,6 +86,8 @@ class ch:
                 ConMenu.conText.see("end")
             except Exception as e:
                 ConMenu.conText.insert(END, f"{e}\n")
+        KillListeners = False
+        print('Killed listener')
 
 
 def connect():
@@ -121,8 +137,10 @@ class Connector:
             self.conBUT.grid(row=3, column=0, columnspan=2)
             self.conIDlbl = Label(self.cnct, text='ID(provided by server)')
             self.conID = Entry(self.cnct, width=5)
+            self.conIDB = Button(self.cnct, width=5, text='get ID', command=lambda: dexec("getID()"))
             self.conIDlbl.grid(row=4, column=0, columnspan=2)
             self.conID.grid(row=5, column=0, columnspan=2)
+            self.conIDB.grid(row=6, column=0, columnspan=2)
 
             self.conMenu = Frame(self.frame)
             self.conRun = Entry(self.conMenu, width=46)
@@ -133,7 +151,6 @@ class Connector:
             self.conRun.grid(row=1, column=0)
             self.conRunB.grid(row=1, column=1)
             self.menubar = Menu(self.root, tearoff=0)
-            self.menubar.add_command(label="Style")
             self.menubar.add_command(label="Reload")
             self.menubar.add_separator()
             self.settings_menu = Menu(self.menubar)
@@ -177,8 +194,14 @@ class Connector:
             self.debug_menu.add_command(label="ToggleVis", command=lambda: dexec("dsel().visible = not dsel().visible"))
             # self.debug_menu.add_command(label="ToggleOnTable", command=lambda: dexec("dsel().onTable = not dsel().onTable"))
             # self.debug_menu.add_command(label="ToggleOnHand",command=lambda: dexec("dsel().onHand = not dsel().onHand"))
-            self.debug_menu.add_command(label="AddGOnTable", command=lambda: dexec("game.onTable.add(dsel())"))
+            self.debug_menu.add_command(label="AddGOnTable", command=lambda: dexec("game.onTable.append(dsel())"))
             self.debug_menu.add_command(label="AddPLOnHand", command=lambda: dexec("LocalPlayer.cards.add(dsel())"))
+            self.debug_menu.add_separator()
+            self.debug_menu.add_command(label="killLis()", command=lambda: dexec("killLis()"))
+            self.debug_menu.add_command(label="Toggle lockID", command=lambda: dexec("lockID()"))
+            self.debug_menu.add_command(label="test()", command=lambda: dexec("test()"))
+            self.debug_menu.add_command(label="sendSync()", command=lambda: dexec("sendSync()"))
+            self.debug_menu.add_command(label="reqSync()", command=lambda: dexec("reqSync()"))
             self.menubar.add_cascade(label='DebugCmd', menu=self.debug_menu)
             self.root.config(menu=self.menubar)
             self.root.bind('<Return>', lambda event: dsend(self.conRun.get()))
@@ -206,17 +229,20 @@ def dsel():
     return strcls(f'card_{ConMenu.cardType.get()}{ConMenu.cardNum.get()}')
 
 
-def send(text):
-    ConMenu.conText.insert(END, f"you: {text}\n")
+def send(text, shown = True):
+    if shown: ConMenu.conText.insert(END, f"you: {text}\n")
     me.send(text)
-    ConMenu.conText.see("end")
+    if shown: ConMenu.conText.see("end")
 
 
-def gsend(text):
-    me.s.send(('%' + text).encode('utf-8'))
+def gsend(text, target = None):
+    if target is None: me.s.send(('%' + text).encode('utf-8'))
+    else: me.s.send((f'%>{target}>' + text).encode('utf-8'))
+    sleep(0.1)
 
 
 ConMenu = Connector()
+ConMenu.selfID = -1
 
 thread.Thread(target=ConMenu.run, daemon=True).start()
 
@@ -228,6 +254,7 @@ global RUN
 
 def LifeCheck():
     print('HELL YEAH!')
+    print(pygame.mouse.get_pos())
     dprint('HELL NO!')
 
 
@@ -238,10 +265,14 @@ def dcls():
         print(f'ConMenu error > {e}')
 
 
-def dprint(txt):
+def dprint(txt, debug=False):
     try:
-        ConMenu.print(txt)
-        ConMenu.conText.see("end")
+        if not debug:
+            ConMenu.print(txt)
+            ConMenu.conText.see("end")
+        if debug and ConMenu.debugMode.get():
+            ConMenu.print(txt)
+            ConMenu.conText.see("end")
     except Exception as e:
         print(f'ConMenu error > {e}')
 
@@ -279,14 +310,14 @@ FPS = 60
 
 
 class Game:
-    def __init__(self, cards):
-        self.players = set()
-        self.cards = set(cards)
-        self.deck = set(cards)
+    def __init__(self):
+        self.players = []
+        self.cards = []
+        self.deck = []
         self.discarded = set()
         self.onHands = set()
         self.onTable = set()
-        self.trump = ''
+        self.trump = 's14'
         self.mover = None
 
 
@@ -313,16 +344,35 @@ class Card:
         self.visible = False
         self.onTable = False
         self.onHand = False
-        self.tableCoords = [-100, -100]
+        self.tableCoords = [-9, -9]
         self.HL = False
 
 
-game = Game(Card.instances)
+game = Game()
 
 
 # def PLRinit(plrs):
 #    for num, i in enumerate(plrs):
 #        exec(f"plr{num} = Player('{i}', pygame.Rect(len(Player.instances)*100,0, 100, 120))")
+
+
+def getID():
+    try:
+        send('/getID', False)
+    except NameError:
+        dprint('You are not connected to the server!')
+        return
+    for i in range(1,11):
+        if ConMenu.selfID == -1: sleep(0.5)
+        else: break
+
+def recvID(id):
+    ConMenu.selfID = id
+    ConMenu.conID.delete(0, END)
+    ConMenu.conID.insert(0, id)
+    sleep(0.05)
+    lockID()
+
 def plrID(id):
     for i in Player.instances:
         if i.name.split('-')[-1] == str(id):
@@ -348,8 +398,11 @@ def gmEncode(type='full'):
         aplist = ''
         for i in game.discarded:
             aplist += i.name + '/'
+        fullStr += aplist[:-1] + '|'
+        aplist = ''
+        for i in game.onTable:
+            aplist += i.name + f'({i.tableCoords[0]},{i.tableCoords[1]})' + '/'
         fullStr += aplist[:-1] + '>>>'
-        print(fullStr)
 
         for i in Player.instances:
             aplist = ''
@@ -400,6 +453,7 @@ def getCard(name):
 def gmDecode(msg):
     global LocalPlayer
     try:
+        print(msg)
         msg1 = msg.split(':::')
         tag = msg1[0]
         msg1.remove(msg1[0])
@@ -408,8 +462,8 @@ def gmDecode(msg):
             Player.instances = []
             for num, i in enumerate(plrs):
                 exec(f"plr{num} = Player('{i}', pygame.Rect(len(Player.instances)*100,0, 100, 120))")
-                if i.split("-")[-1] == ConMenu.conID.get():
-                    LocalPlayer = plrID(ConMenu.conID.get())
+                if i.split("-")[-1] == ConMenu.selfID:
+                    LocalPlayer = plrID(ConMenu.selfID)
             game.trump = msg1[1].split('|')[0]
             game.mover = plrID(msg1[1].split('|')[1])
             gLsts = msg1[2].split('>>>')[0]
@@ -421,7 +475,7 @@ def gmDecode(msg):
                         apList.append(getCard(i))
                     except:
                         print('Error when decoding gLsts1 ' + i)
-            game.deck = set(apList)
+            game.deck = list(apList)
             apList = []
             for i in gLsts.split('|')[1].split('/'):
                 if i:
@@ -429,7 +483,18 @@ def gmDecode(msg):
                         apList.append(getCard(i))
                     except:
                         print('Error when decoding gLsts2 ' + i)
-            game.discarded = set(apList)
+            game.discarded = list(apList)
+            apList = []
+            for i in gLsts.split('|')[2].split('/'):
+                if i:
+                    try:
+                        card = i.split('(')[0]
+                        coords = getPar(i).split(',')
+                        apList.append(getCard(card))
+                        getCard(card).tableCoords = int(coords[0]), int(coords[1])
+                    except:
+                        print('Error when decoding gLsts3 ' + i)
+            game.onTable = set(apList)
             for ii in plrLsts.split('~'):
                 plr = plrID(ii.split('>')[0])
                 apList = []
@@ -439,19 +504,18 @@ def gmDecode(msg):
                     except:
                         print(f'Error when decoding plrLsts {ii} > {i}')
                 plr.cards = apList
+            LocalPlayer = plrID(ConMenu.selfID)
         elif tag == 'plrsInit':
-            msg1 = msg1[0].split('>')
-            if ConMenu.conID.get() == msg1[0]:
-                if Player.instances[0].name == 'Null':
-                    exec(
-                        f"plr1 = Player('{ConMenu.conNAME.get()}-{ConMenu.conID.get()}', pygame.Rect((len(Player.instances)-1) * 100, 0, 100, 120))")
-                    Player.instances[0] = Player.instances[1]
-                    Player.instances.pop()
+            if Player.instances[0].name == 'Null':
                 exec(
-                    f"plr{len(Player.instances) + 1} = Player('{msg1[1]}', pygame.Rect((len(Player.instances))*100,0, 100, 120))")
-                if msg1[1].split("-")[-1] == ConMenu.conID.get():
-                    dprint('ERROR, A player with this tag already exists')
-                LocalPlayer = plrID(ConMenu.conID.get())
+                    f"plr1 = Player('{ConMenu.conNAME.get()}-{ConMenu.selfID}', pygame.Rect((len(Player.instances)-1) * 100, 0, 100, 120))")
+                Player.instances[0] = Player.instances[1]
+                Player.instances.pop()
+            exec(
+                f"plr{len(Player.instances) + 1} = Player('{msg1[-1]}', pygame.Rect((len(Player.instances))*100,0, 100, 120))")
+            if msg1[-1].split("-")[-1] == ConMenu.selfID:
+                dprint('ERROR, A player with this tag already exists')
+            LocalPlayer = plrID(ConMenu.selfID)
         elif tag == 'gameState':
             game.trump = msg1[1].split('|')[0]
             game.mover = plrID(msg1[1].split('|')[1])
@@ -471,74 +535,60 @@ def gmDecode(msg):
         dprint(f"Msg decode error > {e}")
 
 
-def sendSync(type):
+def sendSync(type = 'full', target = None):
     if type == 'full':
-        gsend(f'gmDecode("{gmEncode("full")}")')
+        gsend(f'gmDecode("{gmEncode("full")}")', target)
 
 
-def reqSync(type):
+def reqSync(type = 'full'):
+    print('req sync')
     if type == 'players':
-        gsend(f'sendPlr({ConMenu.conID.get()})')
+        gsend(f'sendPlr({ConMenu.selfID})')
+        pass
+    elif type == 'full':
         pass
 
 
-def lockID(value=True):
+def lockID(value=None):
     tdict = {
-        False: 'enabled',
-        True: 'disabled'
+        False: 'normal',
+        True: 'disabled',
+        'normal': True,
+        'disabled': False
     }
+    if value is None: value = tdict[ConMenu.conID['state']]
     ConMenu.conID['state'] = tdict[value]
 
 
 def sendPlr(target):
-    gsend(f'gmDecode("plrsInit:::{target}>{ConMenu.conNAME.get()}-{ConMenu.conID.get()}")')
+    print(f'sending {ConMenu.conNAME.get()}-{ConMenu.selfID} to {target}')
+    gsend(f'gmDecode("plrsInit:::{ConMenu.conNAME.get()}-{ConMenu.selfID}")', target)
+#gsend('gmDecode("plrsInit:::tB-13")', 12)
 
 
-def Decode(msg):
-    global LocalPlayer
+def download(url, saveas = None):
     try:
-        tag = msg.split('>>>')[0]
-        msg = msg.split('>>>')[1]
-        if tag == "PLRSinit":
-            Player.instances = []
-            plrs = msg.split("|")
-            for num, i in enumerate(plrs):
-                exec(f"plr{num} = Player('{i}', pygame.Rect(len(Player.instances)*100,0, 100, 120))")
-                if i.split("-")[-1] == ConMenu.conID.get():
-                    LocalPlayer = plrID(ConMenu.conID.get())
-        if tag == "GameStateSET":
-            for line in msg.split("|||"):
-                print(f"line > {line}")
-                print(f"split - {line.split('>>')}")
-                t = line.split(">>")[0]
-                items = ''.join([str(it) for it in line.split(">>")[1:]])
-                # items = line.split(">>")[1:]
-                print(f"t-{t}, items-{items}")
-                newlist = []
-                for i in items.split(','):
-                    print(f'i - {i}')
-                    newlist.append(strcls(f'card_{i}'))
-                if t == 'game.onTable': game.onTable = newlist
-        if tag == "GameStateADD":
-            for line in msg.split("|||"):
-                t = line.split(">>")[0]
-                items = ''.join([str(it) for it in line.split(">>")[1:]])
-                for i in items.split(','):
-                    if t == 'game.onTable': game.onTable.append(strcls(f'card_{i}'))
-    except Exception as e:
-        print(f"Msg decode error > {e}")
-        dprint(f"Msg decode error > {e}")
+        if saveas is None: saveas = url.split('/')[-1]
+        print(f"requesting {url.split('/')[-1]} from {url} as {saveas}")
+        r = requests.get((url), allow_redirects=True)
+        open(saveas, 'wb').write(r.content)
+    except:
+        print(f'Error downloading {url}')
 
-
-rootDir = os.getcwd()
+userDir = Path.home()
+araiDir = os.path.join(userDir, 'Arai-stuff')
+exeDir = os.getcwd()
 filesInvalid = False
 url = serverUrl + 'pyLib/cards/'
+os.chdir(userDir)
+if not os.path.isdir('Arai-Stuff'): os.mkdir('Arai-Stuff')
+os.chdir('Arai-Stuff')
+download((serverUrl + 'pyLib/readme.txt'))
 if not os.path.isdir('.cardAssets'): os.mkdir('.cardAssets')
 os.chdir('.cardAssets')
 print('Updating asset list')
 try:
-    r = requests.get((url + 'AssetList.txt'), allow_redirects=True)
-    open(f'AssetList.txt', 'wb').write(r.content)
+    download((url + 'AssetList.txt'))
 except:
     print('error getting asset list')
     dprint('error getting asset list')
@@ -547,13 +597,10 @@ with open('AssetList.txt', 'r') as assetList:
     fileList = assetList.readlines()
     for i in fileList:
         if not os.path.isfile(i[:-1]):
-            print(f'requesting {i[:-1]} from ' + url + f'{i[:-1]}')
-            r = requests.get((url + f'{i[:-1]}'), allow_redirects=True)
-            open(f'{i[:-1]}', 'wb').write(r.content)
-os.chdir(rootDir)
+            download((url + f'{i[:-1]}'), f'{i[:-1]}')
+os.chdir(araiDir)
 
 cardSize = (88, 124)
-# loading cards
 # for i in range(2, 15):
 for i in range(6, 15):
     for j in "chsd":
@@ -624,7 +671,16 @@ x,y = uiRightbar.x, uiRightbar.y
 deckX, deckY = (x + (uiRightbar.width/2))-(cardSize[1]/2), y+100
 beatenB = pygame.Rect(deckX, deckY+350, cardSize[0], cardSize[1])
 
+global StopUpdates
+StopUpdates = False
+def ToggleWinUpd(force = None):
+    global StopUpdates
+    if force is None: StopUpdates = not StopUpdates
+    else: StopUpdates = bool(force)
+
 def winUpd():
+    global StopUpdates
+    if StopUpdates: return
     global LocalPlayer
     draw_background()
     reloadAv()
@@ -635,10 +691,11 @@ def winUpd():
                 i.rect.x = tblX + ((tblMargin + cardSize[0]) * i.tableCoords[0])
                 i.rect.y = tblY + ((tblMargin + cardSize[1]) * i.tableCoords[1])
 
-            if i in LocalPlayer.cards:
+            plrCards = sortCards(LocalPlayer.cards)
+            if i in plrCards:
                 i.rect.x = handX + (tblMargin / 2 + cardSize[0]) * (
-                        list(LocalPlayer.cards).index(i) - (10 * (list(LocalPlayer.cards).index(i) // 10)))
-                i.rect.y = handY + cardSize[1] * (list(LocalPlayer.cards).index(i) // 10)
+                        list(plrCards).index(i) - (10 * (list(plrCards).index(i) // 10)))
+                i.rect.y = handY + cardSize[1] * (list(plrCards).index(i) // 10)
 
             root.blit(i.img, (i.rect.x, i.rect.y))
 
@@ -676,7 +733,7 @@ def winUpd():
     root.blit(cardBack, (deckX, deckY))
     draw_text(f'{len(game.deck)}', root, deckX+(cardSize[0]/2)-(len(f'{len(game.deck)}')*6), deckY+15, pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('00EEEE'))
     root.blit(beatenButImg, (beatenB.x, beatenB.y))
-    draw_text(f'{len(game.discarded)}', root, deckX + (cardSize[0] / 2) - (len(f'{len(game.deck)}') * 6), deckY + 365,
+    draw_text(f'{len(game.discarded)}', root, deckX + (cardSize[0] / 2) - (len(f'{len(game.discarded)}') * 6), deckY + 365,
               pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('ff4336'))
 
     for i in ContextMenu.instances:
@@ -688,6 +745,71 @@ def winUpd():
 def draw_init():
     root.fill((64, 64, 64))
     pygame.display.update()
+
+def sortCards(cards):
+    trump = game.trump[0]
+    order = {'s': 4, 'c': 3, 'h': 2, 'd': 1, trump: 5}
+    try: res = sorted(cards, key=lambda item: (int(order.get(item.name[0], 100)), item.name[1:-1]), reverse=True)
+    except: res = sorted(cards, key=lambda item: (int(order.get(item[0], 100)), item[1:-1]), reverse=True)
+    return res
+
+def cardMove(object, origin, target):
+    origin.remove(object)
+    if type(target) == type(list()): target.append(object)
+    if type(target) == type(set()): target.add(object)
+
+def gamePrep():
+    try:
+        getID()
+    except NameError:
+        dprint('You must be connected to the server to start the game')
+        return
+    for i in range(1, 11):
+        if ConMenu.selfID == -1:
+            sleep(0.5)
+        else: break
+
+def runAsserts():
+    if ConMenu.selfID == -1:
+        dprint('ID error')
+        return False
+
+def startDurak():
+    for i in range(6, 15):
+        for j in "chsd":
+            try:
+                game.cards.append(getCard(j + str(i)))
+                game.deck.append(getCard(j + str(i)))
+            except Exception as e: print(e)
+    game.players = Player.instances
+    print(f'{game.deck=}')
+    random.shuffle(game.deck)
+    game.trump = game.deck[-1].name
+    for i in game.players:
+        for num in range(1,7):
+            cardMove(game.deck[0], game.deck, i.cards)
+    plrCards =[]
+    for i in game.players:
+        plrCards += i.cards
+    trump = game.trump
+    order = {'s': 4, 'c': 3, 'h': 2, 'd': 1, trump[0]: 5}
+    highestCard = sorted(plrCards, key=lambda item: (int(order.get(item.name[0], 100)), item.name[1:]), reverse=True)
+    highestCard = highestCard[0]
+    print(f'{highestCard.__dict__=}')
+    for i in game.players:
+        print(f'{i.cards=}')
+        try:
+            if (highestCard in i.cards): game.mover = i
+        except Exception as e: print('highest card failed > ', e)
+    sendSync()
+
+
+
+
+
+
+
+
 
 
 global selectedCard
@@ -746,7 +868,7 @@ class ContextMenu:
                 draw_text(i.name, root, i.rect.x + 10, i.rect.y + 2)
 
     def run(self, f):
-        funcs = ['LifeCheck()', 'TgDebug']
+        funcs = ['LifeCheck()', 'TgDebug', 'startDurak()', 'plrsInit', 'None']
         if f not in funcs:
             dexec(f)
         else:
@@ -755,9 +877,24 @@ class ContextMenu:
             elif f == funcs[1]:
                 ConMenu.debugMode.set((not self.debug))
                 self.debug = not self.debug
+            elif f == funcs[2]:
+                print('Starting durak')
+                gamePrep()
+                gsend('gamePrep()')
+                startDurak()
+                gsend('menu.closeAll()')
+                for i in ContextMenu.instances:
+                    i.active = False
+                pass
+            elif f == funcs[3]:
+                reqSync('players')
 
     def hide(self):
         self.active = False
+
+    def closeAll(self):
+        for i in self.instances:
+            i.active = False
 
 
 buttons = [
@@ -768,6 +905,13 @@ dButs = [
     cmButton('Debug Is On', 'dprint("Yes, it is on!")')
 ]
 menu = ContextMenu(buttons, dButs)
+buttons = [
+    cmButton('Get Players', 'plrsInit'),
+    cmButton('Durak', 'startDurak()'),
+    cmButton("That's it, sadly", 'None')
+]
+starter = ContextMenu(buttons)
+
 
 def hexc(st):
     if st[0] == '#': list(st).pop(0).join()
@@ -781,15 +925,17 @@ def hexc(st):
 
 def test():
     gmDecode(
-        'FullState:::Arai-1|B-2|Я-3:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|s13>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
+        'FullState:::Arai-1|B-2|Я-3:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|s13|s12(0,0)>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
 
-
+#355 180
 def main():
     lmbhandling = False
     rmbhandling = False
     global RUN
     clock = pygame.time.Clock()
     draw_init()
+    starter.set(355, 180)
+    starter.draw()
     while RUN:
         # try:
         clock.tick(FPS)
@@ -804,16 +950,17 @@ def main():
         pos = pygame.mouse.get_pos()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not lmbhandling:
             lmbhandling = True
-            if menu.active:
-                for i in menu.buttons:
-                    if i.rect.collidepoint(pos):
-                        menu.run(i.func)
-                        continue
-                if menu.debug:
-                    for i in menu.dButs:
+            for m in ContextMenu.instances:
+                if m.active:
+                    for i in m.buttons:
                         if i.rect.collidepoint(pos):
-                            menu.run(i.func)
+                            m.run(i.func)
                             continue
+                    if menu.debug:
+                        for i in m.dButs:
+                            if i.rect.collidepoint(pos):
+                                m.run(i.func)
+                                continue
             for i in Card.instances:
                 if i.rect.collidepoint(pos):
                     select(i)
