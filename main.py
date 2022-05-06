@@ -311,6 +311,7 @@ FPS = 60
 
 class Game:
     def __init__(self):
+        self.gameType = 'durak'
         self.players = []
         self.cards = []
         self.deck = []
@@ -324,12 +325,26 @@ class Game:
 class Player:
     instances = []
 
-    def __init__(self, name, rect):
+    def __init__(self, name, rect, canMove=False):
         self.name = name
         self.rect = rect
         self.cards = set()
         self.visible = False
+        self.canMove = canMove
         self.instances.append(self)
+
+    def id(self):
+        return self.name.split('-')[-1]
+
+    def next(self, margin=1):
+        try:
+            return self.instances[self.instances.index(self) + margin]
+        except IndexError:
+            return self.instances[self.instances.index(self) + margin - len(self.instances)]
+
+    def __repr__(self):
+        return str(self.__dict__)
+
 
 
 class Card:
@@ -378,7 +393,9 @@ def plrID(id):
         if i.name.split('-')[-1] == str(id):
             return i
 
-    print('plrID failed!')
+    print(f'plrID failed on {id}')
+    for i in Player.instances:
+        print(i.__dict__)
     return f'plrID({id}) failed!'
 
 
@@ -387,7 +404,7 @@ def gmEncode(type='full'):
         fullStr = 'FullState:::'
         for i in Player.instances:
             aplist = ''
-            fullStr += i.name + '|'
+            fullStr += i.name + '¡' + str(int(i.canMove)) + '|'
         fullStr = fullStr[:-1] + ':::'
         fullStr += game.trump + '|' + game.mover.name.split('-')[-1] + ':::'
         aplist = ''
@@ -407,6 +424,7 @@ def gmEncode(type='full'):
         for i in Player.instances:
             aplist = ''
             fullStr += i.name.split('-')[-1] + '>'
+            if len(i.cards) == 0: aplist += 'None/'
             for i in i.cards:
                 aplist += i.name + '/'
             fullStr += aplist[:-1] + '~'
@@ -461,7 +479,9 @@ def gmDecode(msg):
             plrs = msg1[0].split('|')
             Player.instances = []
             for num, i in enumerate(plrs):
-                exec(f"plr{num} = Player('{i}', pygame.Rect(len(Player.instances)*100,0, 100, 120))")
+                name = i.split('¡')[0]
+                exec(f"plr{num} = Player('{name}', pygame.Rect(len(Player.instances)*105 + 3,0, 100, 120))")
+                plrID(name.split('-')[-1]).canMove = bool(int(i.split('¡')[-1]))
                 if i.split("-")[-1] == ConMenu.selfID:
                     LocalPlayer = plrID(ConMenu.selfID)
             game.trump = msg1[1].split('|')[0]
@@ -498,6 +518,9 @@ def gmDecode(msg):
             for ii in plrLsts.split('~'):
                 plr = plrID(ii.split('>')[0])
                 apList = []
+                if ii.split('>')[1] == 'None':
+                    plr.cards = []
+                    continue
                 for i in ii.split('>')[1].split('/'):
                     try:
                         apList.append(getCard(i))
@@ -617,6 +640,8 @@ dudeHL = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'D
                                 (100, 100))
 dudeMove = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'DudePicMove.png')).convert_alpha(),
                                 (100, 100))
+dudeDef = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'DudePicDef.png')).convert_alpha(),
+                                (100, 100))
 cardHL = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'CardHighlight.png')).convert_alpha(),
                                 cardSize)
 cardBack = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'cardBack.png')).convert_alpha(),
@@ -722,8 +747,12 @@ def winUpd():
         draw_text(str(len(i.cards)), root, (i.rect.x + 50 - len(str(len(i.cards))) * 4), i.rect.y + 75, bombard,
                   hexc('0'))
         if i == game.mover:
-            root.blit(dudeMove, (i.rect.x, i.rect.y))
-            draw_text('ACT', root, (i.rect.x + 38), i.rect.y + 2, bombard, (20,20,20))
+            if game.gameType == 'durak':
+                root.blit(dudeDef, (i.rect.x, i.rect.y))
+                draw_text('Defends', root, (i.rect.x + 16), i.rect.y + 2, bombard, (20, 20, 20))
+            else:
+                root.blit(dudeMove, (i.rect.x, i.rect.y))
+                draw_text('ACT', root, (i.rect.x + 38), i.rect.y + 2, bombard, (20,20,20))
 
     x,y = uiRightbar.x, uiRightbar.y
     deckX, deckY = (x + (uiRightbar.width/2))-(cardSize[1]/2), y+100
@@ -782,7 +811,6 @@ def startDurak():
                 game.deck.append(getCard(j + str(i)))
             except Exception as e: print(e)
     game.players = Player.instances
-    print(f'{game.deck=}')
     random.shuffle(game.deck)
     game.trump = game.deck[-1].name
     for i in game.players:
@@ -799,9 +827,12 @@ def startDurak():
     for i in game.players:
         print(f'{i.cards=}')
         try:
-            if (highestCard in i.cards): game.mover = i
+            if (highestCard in i.cards): game.mover = i.next()
         except Exception as e: print('highest card failed > ', e)
+    game.mover.next().canMove = True
+    game.mover.next(-1).canMove = True
     sendSync()
+
 
 
 
@@ -815,11 +846,10 @@ def startDurak():
 global selectedCard
 selectedCard = None
 
-
 def select(card):
     global selectedCard
     print(card.name + 'selected')
-    if not selectedCard and LocalPlayer is game.mover:
+    if not selectedCard and LocalPlayer.canMove:
         selectedCard = card
         card.HL = True
     elif card == selectedCard:
@@ -925,7 +955,7 @@ def hexc(st):
 
 def test():
     gmDecode(
-        'FullState:::Arai-1|B-2|Я-3:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|s13|s12(0,0)>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
+        'FullState:::Arai-1¡1|B-2¡0|Я-3¡0:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|s13|s12(0,0)>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
 
 #355 180
 def main():
@@ -988,6 +1018,7 @@ def main():
 
     pygame.quit()
 
-
+ConMenu.conNAME.insert(0, 'tA')
+ConMenu.conRun.insert(0, '#test()')
 main()
 exit()
