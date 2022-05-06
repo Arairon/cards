@@ -4,6 +4,7 @@ from pathlib import Path
 from time import sleep
 import requests
 from tkinter import *
+import datetime as dt
 import random
 import socket
 import sys
@@ -376,6 +377,9 @@ class Card:
         self.tableCoords = [-1, -1]
         self.HL = False
 
+    def __str__(self):
+        return self.name
+
 
 game = Game()
 
@@ -686,6 +690,83 @@ handY = WinHeight - tblMargin - cardSize[1] * 2
 global LocalPlayer
 LocalPlayer = Player('Null', pygame.Rect(-100, -100, 1, 1))
 
+def hexc(st):
+    if st[0] == '#': list(st).pop(0).join()
+    st = st.lower()
+    if len(st) == 1: st = st * 6
+    if len(st) == 3: st = st * 3
+    s1 = int((st[0] + st[1]), 16)
+    s2 = int((st[2] + st[3]), 16)
+    s3 = int((st[4] + st[5]), 16)
+    return (s1, s2, s3)
+
+class Popup:
+    instances = []
+
+    def __init__(self, text='Text Missing', surface=root, x=0, y=0, font=None, color=(255, 255, 255), time=3, fadespeed = 10):
+        self.text = text
+        self.surface = surface
+        self.x = x
+        self.y = y
+        self.font = font
+        self.origColor = color
+        self.color = color
+        self.time = time
+        self.fadespeed = fadespeed
+        self.active = True
+        self.fading = False
+        self.instances.append(self)
+        self.trun()
+
+    def set(self, text=None, surface=None, x=None, y=None, font=None, color=None, time=1, fadespeed = 10):
+        if text is not None: self.text = text
+        if surface is not None: self.surface = surface
+        if x is not None: self.x = x
+        if y is not None: self.y = y
+        if font is not None: self.font = font
+        if color is None: self.color = self.origColor
+        else: self.color = color
+        self.active = True
+        self.fading = False
+        self.time = time
+        self.fadespeed = fadespeed
+        self.trun()
+
+    def popup(self, text='Text not set!', color=None, time=1):
+        if color is None: self.color = self.origColor
+        else: self.color = color
+        self.text = text
+        self.time = time
+        self.active = True
+        self.fading = False
+        self.trun()
+
+    def trun(self):
+        thread.Thread(target=self.run, args=(), daemon=True).start()
+
+    def run(self):
+        sleep(self.time)
+        self.fading= True
+
+    def check(self):
+        if self.fading:
+            self.fade()
+            if sum(self.color) < 40:
+                self.fading = False
+                self.active = False
+
+    def draw(self):
+        if self.active:
+            #print(f'{self.text=}, {self.surface=}, {self.x=}, {self.y=}, {self.font=}, {self.color=}')
+            draw_text(self.text, self.surface, self.x - (len(self.text)*4), self.y, self.font, self.color)
+            self.check()
+
+    def fade(self):
+        speed = self.fadespeed
+        self.color = (max((self.color[0] - speed), 0), max((self.color[1] - speed), 0), max((self.color[2] - speed), 0))
+
+notifier = Popup('Notifier active!', root, uiTable.width / 2, uiTable.height / 2 - 2, bombard, hexc('00aa00'), 3, 10)
+
 
 def draw_text(text, surface, x, y, font=None, color=(255, 255, 255)):
     global tahoma
@@ -694,6 +775,7 @@ def draw_text(text, surface, x, y, font=None, color=(255, 255, 255)):
     textrect = textobj.get_rect()
     textrect.topleft = (x, y)
     surface.blit(textobj, textrect)
+
 
 
 def draw_background():
@@ -799,6 +881,9 @@ def winUpd():
     for i in ContextMenu.instances:
         if i.active: i.draw()
 
+    for i in Popup.instances:
+        i.draw()
+
     pygame.display.update()
 
 
@@ -856,9 +941,17 @@ def nextRound():
     game.mover = game.mover.next()
     game.mover.next().canMove = True
     game.mover.next(-1).canMove = True
+    for i in Player.instances:
+        while len(i.cards) < 6 and game.deck:
+            cardMove(game.deck[0], game.deck, i.cards)
+
+    gmUpd()
+
 
 
 def startDurak():
+    gsend('game.tableClickable=True')
+    game.tableClickable=True
     for i in range(6, 15):
         for j in "chsd":
             try:
@@ -905,20 +998,35 @@ def select(card):
         selectedCard = None
         card.HL = False
 
+def beatenClick():
+    pass
 
 def tableClick():
     global selectedCard
     if not selectedCard:
         print('Card not selected')
         return
-    if (LocalPlayer != game.mover) and LocalPlayer.canMove and (len(game.mover.cards) < game.tableRow(0)):
-        selectedCard.tableCoords = [len(game.tableRow(0)), 0]
-        cardMove(selectedCard, LocalPlayer.cards, game.onTable)
-    elif (LocalPlayer == game.mover) and LocalPlayer.canMove:
-        pass
-    else:
-        dprint('Unable to do that')
-        return
+    try:
+        if (LocalPlayer != game.mover) and LocalPlayer.canMove and (len(game.tableRow(0)) < len(game.mover.cards)) and (len(game.tableRow(0)) < 6):
+            selectedCard.tableCoords = [len(game.tableRow(0)), 0]
+            if len(game.tableRow(0)) == 0: cardMove(selectedCard, LocalPlayer.cards, game.onTable)
+            else:
+                nope = True
+                for i in game.onTable:
+                    if str(selectedCard)[1:] == str(i)[1:]: nope = False
+                if nope: raise AssertionError('No cards with this value on table')
+                cardMove(selectedCard, LocalPlayer.cards, game.onTable)
+        elif (LocalPlayer == game.mover) and LocalPlayer.canMove:
+            pass
+        else:
+            if not LocalPlayer.canMove: raise AssertionError("You can't move right now!")
+            elif len(game.tableRow(0)) < len(game.mover.cards): raise AssertionError("The player doesn't have enough cards!")
+            elif len(game.tableRow(0)) >= 6: raise AssertionError("Too many cards on the table!")
+            else: raise AssertionError('Unable to tableClick(), unknown reason')
+            #notifier.set('Unable to do that', root, uiTable.width/2-36, uiTable.height/2-3, bombard,hexc('ee1e1e'), 2)
+            dprint('Unable to do that')
+            return
+    except AssertionError as e: notifier.popup(str(e), hexc('ee1e1e'))
     selectedCard.HL = False
     selectedCard = None
     gmUpd()
@@ -965,7 +1073,7 @@ class ContextMenu:
                 draw_text(i.name, root, i.rect.x + 10, i.rect.y + 2)
 
     def run(self, f):
-        funcs = ['LifeCheck()', 'TgDebug', 'startDurak()', 'plrsInit', 'None']
+        funcs = ['LifeCheck()', 'TgDebug', 'startDurak()', 'plrsInit', 'testPopup','None']
         if f not in funcs:
             dexec(f)
         else:
@@ -985,11 +1093,15 @@ class ContextMenu:
                 pass
             elif f == funcs[3]:
                 reqSync('players')
+            elif f == funcs[4]:
+                notifier.popup('Testing popup!', hexc('ee00ee'))
+
 
     def hide(self):
         self.active = False
 
     def closeAll(self):
+        game.tableClickable = True
         for i in self.instances:
             i.active = False
 
@@ -999,7 +1111,8 @@ buttons = [
     cmButton('Toggle debug', 'TgDebug')
 ]
 dButs = [
-    cmButton('Debug Is On', 'dprint("Yes, it is on!")')
+    cmButton('Debug Is On', 'dprint("Yes, it is on!")'),
+    cmButton('RunPopup', 'testPopup')
 ]
 menu = ContextMenu(buttons, dButs)
 buttons = [
@@ -1008,17 +1121,6 @@ buttons = [
     cmButton("Close this menu", 'menu.closeAll()')
 ]
 starter = ContextMenu(buttons)
-
-
-def hexc(st):
-    if st[0] == '#': list(st).pop(0).join()
-    st = st.lower()
-    if len(st) == 1: st = st * 6
-    if len(st) == 3: st = st * 3
-    s1 = int((st[0] + st[1]), 16)
-    s2 = int((st[2] + st[3]), 16)
-    s3 = int((st[4] + st[5]), 16)
-    return (s1, s2, s3)
 
 
 def test():
@@ -1070,6 +1172,11 @@ def main():
                 tableClick()
                 continue
 
+            if beatenB.collidepoint(pos) and game.tableClickable:
+                dprint('beatenB click')
+                beatenClick()
+                continue
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and not rmbhandling:
             rmbhandling = True
             if menu.active:
@@ -1094,6 +1201,5 @@ def main():
 
 
 ConMenu.conNAME.insert(0, 't')
-ConMenu.conRun.insert(0, '#test()')
 main()
 exit()
