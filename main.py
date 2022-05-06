@@ -236,9 +236,11 @@ def send(text, shown = True):
 
 
 def gsend(text, target = None):
-    if target is None: me.s.send(('%' + text).encode('utf-8'))
-    else: me.s.send((f'%>{target}>' + text).encode('utf-8'))
-    sleep(0.1)
+    try:
+        if target is None: me.s.send(('%' + text).encode('utf-8'))
+        else: me.s.send((f'%>{target}>' + text).encode('utf-8'))
+        sleep(0.1)
+    except NameError: dprint('You are not connected to the server')
 
 
 ConMenu = Connector()
@@ -320,6 +322,7 @@ class Game:
         self.onTable = set()
         self.trump = 's14'
         self.mover = None
+        self.tableClickable = False
 
 
 class Player:
@@ -330,7 +333,7 @@ class Player:
         self.rect = rect
         self.cards = set()
         self.visible = False
-        self.canMove = canMove
+        self.canMone = canMove
         self.instances.append(self)
 
     def id(self):
@@ -359,7 +362,7 @@ class Card:
         self.visible = False
         self.onTable = False
         self.onHand = False
-        self.tableCoords = [-9, -9]
+        self.tableCoords = [-1, -1]
         self.HL = False
 
 
@@ -650,6 +653,7 @@ beatenButImg = pygame.transform.scale(pygame.image.load(os.path.join('.cardAsset
                                 cardSize)
 tahoma = pygame.font.Font(r'.cardAssets\tahoma.ttf', 17)
 bombard = pygame.font.Font(r'.cardAssets\bombard.ttf', 20)
+uiTable = pygame.Rect(0, WinHeight/6, WinWidth - (WinWidth / 6),WinHeight-(WinHeight-50-cardSize[1]*2))
 uiEnemies = pygame.Rect(0, 0, WinWidth, WinHeight / 6)
 uiRightbar = pygame.Rect(WinWidth - WinWidth / 8, WinHeight / 6, WinWidth / 6, WinHeight - WinHeight / 6)
 uiSeparator = pygame.Rect(0, WinHeight - 50 - cardSize[1] * 2, WinWidth, 20)
@@ -938,7 +942,7 @@ menu = ContextMenu(buttons, dButs)
 buttons = [
     cmButton('Get Players', 'plrsInit'),
     cmButton('Durak', 'startDurak()'),
-    cmButton("That's it, sadly", 'None')
+    cmButton("Close this menu", 'menu.closeAll()')
 ]
 starter = ContextMenu(buttons)
 
@@ -996,8 +1000,10 @@ def main():
                     select(i)
                     continue
 
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            lmbhandling = False
+            if uiTable.collidepoint(pos) and game.tableClickable:
+                dprint('tableclick')
+                #tableClick()
+                continue
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and not rmbhandling:
             rmbhandling = True
@@ -1005,6 +1011,9 @@ def main():
                 menu.hide()
             else:
                 menu.set(pos)
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            lmbhandling = False
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 3:
             rmbhandling = False
