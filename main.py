@@ -9,7 +9,6 @@ import socket
 import sys
 import os
 
-
 global me
 global serverUrl
 serverUrl = "http://arairon.xyz/"
@@ -17,6 +16,7 @@ serverUrl = "http://arairon.xyz/"
 
 def strcls(classname):
     return getattr(sys.modules[__name__], classname)
+
 
 def getPar(s):
     return s[s.find("(") + 1:s.find(")")]
@@ -30,12 +30,15 @@ def exit():
     except Exception as e:
         print(e)
 
+
 global KillListeners
 KillListeners = False
+
 
 def killLis():
     global KillListeners
     KillListeners = True
+
 
 class ch:
     def __init__(self, host, port, name):
@@ -229,18 +232,21 @@ def dsel():
     return strcls(f'card_{ConMenu.cardType.get()}{ConMenu.cardNum.get()}')
 
 
-def send(text, shown = True):
+def send(text, shown=True):
     if shown: ConMenu.conText.insert(END, f"you: {text}\n")
     me.send(text)
     if shown: ConMenu.conText.see("end")
 
 
-def gsend(text, target = None):
+def gsend(text, target=None):
     try:
-        if target is None: me.s.send(('%' + text).encode('utf-8'))
-        else: me.s.send((f'%>{target}>' + text).encode('utf-8'))
+        if target is None:
+            me.s.send(('%' + text).encode('utf-8'))
+        else:
+            me.s.send((f'%>{target}>' + text).encode('utf-8'))
         sleep(0.1)
-    except NameError: dprint('You are not connected to the server')
+    except NameError:
+        dprint('You are not connected to the server')
 
 
 ConMenu = Connector()
@@ -318,11 +324,17 @@ class Game:
         self.cards = []
         self.deck = []
         self.discarded = set()
-        self.onHands = set()
         self.onTable = set()
         self.trump = 's14'
         self.mover = None
         self.tableClickable = False
+
+    def tableRow(self, row):
+        toRet = []
+        for i in self.onTable:
+            if i.tableCoords[1] == row:
+                toRet.append(i)
+        return toRet
 
 
 class Player:
@@ -333,7 +345,7 @@ class Player:
         self.rect = rect
         self.cards = set()
         self.visible = False
-        self.canMone = canMove
+        self.canMove = canMove
         self.instances.append(self)
 
     def id(self):
@@ -345,9 +357,8 @@ class Player:
         except IndexError:
             return self.instances[self.instances.index(self) + margin - len(self.instances)]
 
-    def __repr__(self):
+    def __str__(self):
         return str(self.__dict__)
-
 
 
 class Card:
@@ -380,9 +391,12 @@ def getID():
     except NameError:
         dprint('You are not connected to the server!')
         return
-    for i in range(1,11):
-        if ConMenu.selfID == -1: sleep(0.5)
-        else: break
+    for i in range(1, 11):
+        if ConMenu.selfID == -1:
+            sleep(0.5)
+        else:
+            break
+
 
 def recvID(id):
     ConMenu.selfID = id
@@ -390,6 +404,7 @@ def recvID(id):
     ConMenu.conID.insert(0, id)
     sleep(0.05)
     lockID()
+
 
 def plrID(id):
     for i in Player.instances:
@@ -561,12 +576,12 @@ def gmDecode(msg):
         dprint(f"Msg decode error > {e}")
 
 
-def sendSync(type = 'full', target = None):
+def sendSync(type='full', target=None):
     if type == 'full':
         gsend(f'gmDecode("{gmEncode("full")}")', target)
 
 
-def reqSync(type = 'full'):
+def reqSync(type='full'):
     print('req sync')
     if type == 'players':
         gsend(f'sendPlr({ConMenu.selfID})')
@@ -589,10 +604,12 @@ def lockID(value=None):
 def sendPlr(target):
     print(f'sending {ConMenu.conNAME.get()}-{ConMenu.selfID} to {target}')
     gsend(f'gmDecode("plrsInit:::{ConMenu.conNAME.get()}-{ConMenu.selfID}")', target)
-#gsend('gmDecode("plrsInit:::tB-13")', 12)
 
 
-def download(url, saveas = None):
+# gsend('gmDecode("plrsInit:::tB-13")', 12)
+
+
+def download(url, saveas=None):
     try:
         if saveas is None: saveas = url.split('/')[-1]
         print(f"requesting {url.split('/')[-1]} from {url} as {saveas}")
@@ -600,6 +617,7 @@ def download(url, saveas = None):
         open(saveas, 'wb').write(r.content)
     except:
         print(f'Error downloading {url}')
+
 
 userDir = Path.home()
 araiDir = os.path.join(userDir, 'Arai-stuff')
@@ -642,18 +660,19 @@ dudePic = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', '
 dudeHL = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'DudePicHighlight.png')).convert_alpha(),
                                 (100, 100))
 dudeMove = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'DudePicMove.png')).convert_alpha(),
-                                (100, 100))
+                                  (100, 100))
 dudeDef = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'DudePicDef.png')).convert_alpha(),
-                                (100, 100))
+                                 (100, 100))
 cardHL = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'CardHighlight.png')).convert_alpha(),
                                 cardSize)
 cardBack = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'cardBack.png')).convert_alpha(),
-                                cardSize)
-beatenButImg = pygame.transform.scale(pygame.image.load(os.path.join('.cardAssets', 'beatenButton.png')).convert_alpha(),
-                                cardSize)
+                                  cardSize)
+beatenButImg = pygame.transform.scale(
+    pygame.image.load(os.path.join('.cardAssets', 'beatenButton.png')).convert_alpha(),
+    cardSize)
 tahoma = pygame.font.Font(r'.cardAssets\tahoma.ttf', 17)
 bombard = pygame.font.Font(r'.cardAssets\bombard.ttf', 20)
-uiTable = pygame.Rect(0, WinHeight/6, WinWidth - (WinWidth / 6),WinHeight-(WinHeight-50-cardSize[1]*2))
+uiTable = pygame.Rect(0, WinHeight / 6, WinWidth - (WinWidth / 6), WinHeight - (WinHeight - 50 - cardSize[1] * 2))
 uiEnemies = pygame.Rect(0, 0, WinWidth, WinHeight / 6)
 uiRightbar = pygame.Rect(WinWidth - WinWidth / 8, WinHeight / 6, WinWidth / 6, WinHeight - WinHeight / 6)
 uiSeparator = pygame.Rect(0, WinHeight - 50 - cardSize[1] * 2, WinWidth, 20)
@@ -696,16 +715,22 @@ def reloadAv():
     except:
         pass
 
-x,y = uiRightbar.x, uiRightbar.y
-deckX, deckY = (x + (uiRightbar.width/2))-(cardSize[1]/2), y+100
-beatenB = pygame.Rect(deckX, deckY+350, cardSize[0], cardSize[1])
+
+x, y = uiRightbar.x, uiRightbar.y
+deckX, deckY = (x + (uiRightbar.width / 2)) - (cardSize[1] / 2), y + 100
+beatenB = pygame.Rect(deckX, deckY + 350, cardSize[0], cardSize[1])
 
 global StopUpdates
 StopUpdates = False
-def ToggleWinUpd(force = None):
+
+
+def ToggleWinUpd(force=None):
     global StopUpdates
-    if force is None: StopUpdates = not StopUpdates
-    else: StopUpdates = bool(force)
+    if force is None:
+        StopUpdates = not StopUpdates
+    else:
+        StopUpdates = bool(force)
+
 
 def winUpd():
     global StopUpdates
@@ -756,17 +781,19 @@ def winUpd():
                 draw_text('Defends', root, (i.rect.x + 16), i.rect.y + 2, bombard, (20, 20, 20))
             else:
                 root.blit(dudeMove, (i.rect.x, i.rect.y))
-                draw_text('ACT', root, (i.rect.x + 38), i.rect.y + 2, bombard, (20,20,20))
+                draw_text('ACT', root, (i.rect.x + 38), i.rect.y + 2, bombard, (20, 20, 20))
 
-    x,y = uiRightbar.x, uiRightbar.y
-    deckX, deckY = (x + (uiRightbar.width/2))-(cardSize[1]/2), y+100
+    x, y = uiRightbar.x, uiRightbar.y
+    deckX, deckY = (x + (uiRightbar.width / 2)) - (cardSize[1] / 2), y + 100
     if game.trump:
         trumpcard = getCard(game.trump)
-        root.blit(trumpcard.img, (deckX, deckY-(cardSize[1]/2)+10))
+        root.blit(trumpcard.img, (deckX, deckY - (cardSize[1] / 2) + 10))
     root.blit(cardBack, (deckX, deckY))
-    draw_text(f'{len(game.deck)}', root, deckX+(cardSize[0]/2)-(len(f'{len(game.deck)}')*6), deckY+15, pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('00EEEE'))
+    draw_text(f'{len(game.deck)}', root, deckX + (cardSize[0] / 2) - (len(f'{len(game.deck)}') * 6), deckY + 15,
+              pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('00EEEE'))
     root.blit(beatenButImg, (beatenB.x, beatenB.y))
-    draw_text(f'{len(game.discarded)}', root, deckX + (cardSize[0] / 2) - (len(f'{len(game.discarded)}') * 6), deckY + 365,
+    draw_text(f'{len(game.discarded)}', root, deckX + (cardSize[0] / 2) - (len(f'{len(game.discarded)}') * 6),
+              deckY + 365,
               pygame.font.Font(r'.cardAssets\bombard.ttf', 25), hexc('ff4336'))
 
     for i in ContextMenu.instances:
@@ -779,17 +806,22 @@ def draw_init():
     root.fill((64, 64, 64))
     pygame.display.update()
 
+
 def sortCards(cards):
     trump = game.trump[0]
     order = {'s': 4, 'c': 3, 'h': 2, 'd': 1, trump: 5}
-    try: res = sorted(cards, key=lambda item: (int(order.get(item.name[0], 100)), item.name[1:-1]), reverse=True)
-    except: res = sorted(cards, key=lambda item: (int(order.get(item[0], 100)), item[1:-1]), reverse=True)
+    try:
+        res = sorted(cards, key=lambda item: (int(order.get(item.name[0], 100)), item.name[1:-1]), reverse=True)
+    except:
+        res = sorted(cards, key=lambda item: (int(order.get(item[0], 100)), item[1:-1]), reverse=True)
     return res
+
 
 def cardMove(object, origin, target):
     origin.remove(object)
     if type(target) == type(list()): target.append(object)
     if type(target) == type(set()): target.add(object)
+
 
 def gamePrep():
     try:
@@ -800,12 +832,31 @@ def gamePrep():
     for i in range(1, 11):
         if ConMenu.selfID == -1:
             sleep(0.5)
-        else: break
+        else:
+            break
+
 
 def runAsserts():
     if ConMenu.selfID == -1:
         dprint('ID error')
         return False
+
+
+def gmUpd(noSend=False):
+    for i in Card.instances:
+        if i not in game.onTable:
+            i.tableCoords = [-1, -1]
+    if len(game.tableRow(0)) != 0: game.mover.canMove = True
+    if not noSend: sendSync()
+
+
+def nextRound():
+    for i in Player.instances:
+        i.canMove = False
+    game.mover = game.mover.next()
+    game.mover.next().canMove = True
+    game.mover.next(-1).canMove = True
+
 
 def startDurak():
     for i in range(6, 15):
@@ -813,14 +864,15 @@ def startDurak():
             try:
                 game.cards.append(getCard(j + str(i)))
                 game.deck.append(getCard(j + str(i)))
-            except Exception as e: print(e)
+            except Exception as e:
+                print(e)
     game.players = Player.instances
     random.shuffle(game.deck)
     game.trump = game.deck[-1].name
     for i in game.players:
-        for num in range(1,7):
+        for num in range(1, 7):
             cardMove(game.deck[0], game.deck, i.cards)
-    plrCards =[]
+    plrCards = []
     for i in game.players:
         plrCards += i.cards
     trump = game.trump
@@ -832,23 +884,16 @@ def startDurak():
         print(f'{i.cards=}')
         try:
             if (highestCard in i.cards): game.mover = i.next()
-        except Exception as e: print('highest card failed > ', e)
+        except Exception as e:
+            print('highest card failed > ', e)
     game.mover.next().canMove = True
     game.mover.next(-1).canMove = True
     sendSync()
 
 
-
-
-
-
-
-
-
-
-
 global selectedCard
 selectedCard = None
+
 
 def select(card):
     global selectedCard
@@ -859,6 +904,24 @@ def select(card):
     elif card == selectedCard:
         selectedCard = None
         card.HL = False
+
+
+def tableClick():
+    global selectedCard
+    if not selectedCard:
+        print('Card not selected')
+        return
+    if (LocalPlayer != game.mover) and LocalPlayer.canMove and (len(game.mover.cards) < game.tableRow(0)):
+        selectedCard.tableCoords = [len(game.tableRow(0)), 0]
+        cardMove(selectedCard, LocalPlayer.cards, game.onTable)
+    elif (LocalPlayer == game.mover) and LocalPlayer.canMove:
+        pass
+    else:
+        dprint('Unable to do that')
+        return
+    selectedCard.HL = False
+    selectedCard = None
+    gmUpd()
 
 
 class cmButton:
@@ -955,13 +1018,15 @@ def hexc(st):
     s1 = int((st[0] + st[1]), 16)
     s2 = int((st[2] + st[3]), 16)
     s3 = int((st[4] + st[5]), 16)
-    return (s1,s2,s3)
+    return (s1, s2, s3)
+
 
 def test():
     gmDecode(
         'FullState:::Arai-1¡1|B-2¡0|Я-3¡0:::s10|1:::c7/c6/h7/s7/d6/d7/h6/s6|s13|s12(0,0)>>>1>s11/s10/c11/h10/s9/c10/d11/d9/d10/h11~2>s8/h9/d8/h8/c8/c9')
 
-#355 180
+
+# 355 180
 def main():
     lmbhandling = False
     rmbhandling = False
@@ -1002,7 +1067,7 @@ def main():
 
             if uiTable.collidepoint(pos) and game.tableClickable:
                 dprint('tableclick')
-                #tableClick()
+                tableClick()
                 continue
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and not rmbhandling:
@@ -1027,7 +1092,8 @@ def main():
 
     pygame.quit()
 
-ConMenu.conNAME.insert(0, 'tA')
+
+ConMenu.conNAME.insert(0, 't')
 ConMenu.conRun.insert(0, '#test()')
 main()
 exit()
