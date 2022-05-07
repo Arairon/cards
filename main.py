@@ -331,11 +331,19 @@ class Game:
         self.tableClickable = False
 
     def tableRow(self, row):
+        tableSorted = sorted(self.onTable, key=lambda x: x.tableCoords[0])
         toRet = []
-        for i in self.onTable:
+        for i in tableSorted:
             if i.tableCoords[1] == row:
                 toRet.append(i)
         return toRet
+
+    def getFromCoords(self, coords, row=None):
+        if row is not None: coords = [coords, row]
+        for i in game.onTable:
+            if i.tableCoords == coords: return i
+        return None
+
 
 
 class Player:
@@ -364,6 +372,7 @@ class Player:
 
 class Card:
     instances = []
+    lastClicked = None
 
     def __init__(self, name, img, rect):
         self.name = name
@@ -372,13 +381,20 @@ class Card:
         self.rect = rect
         self.instances.append(self)
         self.visible = False
-        self.onTable = False
         self.onHand = False
         self.tableCoords = [-1, -1]
         self.HL = False
 
     def __str__(self):
         return self.name
+
+    def onTable(self):
+        if self in game.onTable: return True
+        else: return False
+
+    def isTrump(self, true = True):
+        if self.name[0] == game.trump[0]: return true
+        else: return not true
 
 
 game = Game()
@@ -694,7 +710,7 @@ def hexc(st):
     if st[0] == '#': list(st).pop(0).join()
     st = st.lower()
     if len(st) == 1: st = st * 6
-    if len(st) == 3: st = st * 3
+    if len(st) == 2: st = st * 3
     s1 = int((st[0] + st[1]), 16)
     s2 = int((st[2] + st[3]), 16)
     s3 = int((st[4] + st[5]), 16)
@@ -758,6 +774,10 @@ class Popup:
     def draw(self):
         if self.active:
             #print(f'{self.text=}, {self.surface=}, {self.x=}, {self.y=}, {self.font=}, {self.color=}')
+            overlay = pygame.Surface(((len(self.text)*8 + 10), 25))
+            overlay.fill(hexc('40'))
+            overlay.set_alpha(130)
+            root.blit(overlay, (self.x - (len(self.text)*4) - 6, self.y))
             draw_text(self.text, self.surface, self.x - (len(self.text)*4), self.y, self.font, self.color)
             self.check()
 
@@ -771,6 +791,9 @@ notifier = Popup('Notifier active!', root, uiTable.width / 2, uiTable.height / 2
 def draw_text(text, surface, x, y, font=None, color=(255, 255, 255)):
     global tahoma
     if font is None: font = tahoma
+    for l in 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя':
+        if l in text.lower():
+            font = tahoma
     textobj = pygame.font.Font.render(font, text, True, color)
     textrect = textobj.get_rect()
     textrect.topleft = (x, y)
@@ -931,19 +954,33 @@ def gmUpd(noSend=False):
     for i in Card.instances:
         if i not in game.onTable:
             i.tableCoords = [-1, -1]
-    if len(game.tableRow(0)) != 0: game.mover.canMove = True
+        if (i in game.discarded) or (i in game.deck):
+            i.rect.x = -100
+            i.rect.y = -100
+    if len(game.tableRow(0)) > len(game.tableRow(1)): game.mover.canMove = True
+    if (len(LocalPlayer.cards) == 0) and (len(game.deck) == 0) and ((len(game.tableRow(0))==len(game.tableRow(1))) or (game.mover != LocalPlayer)):
+        gmWinner(LocalPlayer.name.split('-')[-1], True)
     if not noSend: sendSync()
 
+def gmWinner(winner, orig=False):
+    if orig: gsend(f'gmWinner({winner})')
+    winner = plrID(winner)
+    for i in list(game.onTable)[:]: cardMove(i, game.onTable, game.discarded)
+    for i in list(LocalPlayer.cards)[:]: cardMove(i, LocalPlayer.cards, game.discarded)
+    winPop = Popup(f'Congrats, {winner.name}! You have won the game!', root, uiTable.width / 2, uiTable.height / 2 + 40, bombard, hexc('00eeee'))
 
-def nextRound():
+def nextRound(changePlayer = True):
     for i in Player.instances:
         i.canMove = False
-    game.mover = game.mover.next()
+    if changePlayer:
+        game.mover = game.mover.next()
     game.mover.next().canMove = True
     game.mover.next(-1).canMove = True
     for i in Player.instances:
         while len(i.cards) < 6 and game.deck:
             cardMove(game.deck[0], game.deck, i.cards)
+    for i in list(game.onTable)[:]: cardMove(i, game.onTable, game.discarded)
+
 
     gmUpd()
 
@@ -990,24 +1027,36 @@ selectedCard = None
 
 def select(card):
     global selectedCard
-    print(card.name + 'selected')
+    Card.lastClicked = card
+    print(card.name + 'select called')
     if not selectedCard and LocalPlayer.canMove:
+        print(card.name + 'selected')
         selectedCard = card
         card.HL = True
     elif card == selectedCard:
+        print(card.name + 'deselected')
         selectedCard = None
         card.HL = False
 
 def beatenClick():
-    pass
+    if len(game.tableRow(0)) == len(game.tableRow(1)) and ((LocalPlayer != game.mover) or (len(game.tableRow(0)) == 6)):
+        nextRound()
+    elif LocalPlayer == game.mover and (not len(game.tableRow(0)) == len(game.tableRow(1))):
+        for i in list(game.onTable)[:]: cardMove(i, game.onTable, LocalPlayer.cards)
+        nextRound(False)
+
 
 def tableClick():
     global selectedCard
     if not selectedCard:
         print('Card not selected')
         return
+    if not Card.lastClicked:
+        print('Error: no cards were ever clicked')
+        return
+    gmUpd(True)
     try:
-        if (LocalPlayer != game.mover) and LocalPlayer.canMove and (len(game.tableRow(0)) < len(game.mover.cards)) and (len(game.tableRow(0)) < 6):
+        if (not selectedCard.onTable()) and (LocalPlayer != game.mover) and LocalPlayer.canMove and (len(game.tableRow(0)) < (len(game.mover.cards)+len(game.tableRow(1)))) and (len(game.tableRow(0)) < 6):
             selectedCard.tableCoords = [len(game.tableRow(0)), 0]
             if len(game.tableRow(0)) == 0: cardMove(selectedCard, LocalPlayer.cards, game.onTable)
             else:
@@ -1017,15 +1066,27 @@ def tableClick():
                 if nope: raise AssertionError('No cards with this value on table')
                 cardMove(selectedCard, LocalPlayer.cards, game.onTable)
         elif (LocalPlayer == game.mover) and LocalPlayer.canMove:
-            pass
+            click = Card.lastClicked
+            if not click.onTable(): raise AssertionError('The last clicked card is not on table')
+            try:
+                if game.getFromCoords(click.tableCoords[0], 1): raise AssertionError('This card is already beaten')
+            except IndexError: pass
+            if int(selectedCard.name[1:]) > int(click.name[1:]) and (selectedCard.name[0] == click.name[0]) and click.isTrump(False):
+                selectedCard.tableCoords = [click.tableCoords[0], 1]
+                cardMove(selectedCard, LocalPlayer.cards, game.onTable)
+            elif selectedCard.isTrump() and click.isTrump(False):
+                selectedCard.tableCoords = [click.tableCoords[0], 1]
+                cardMove(selectedCard, LocalPlayer.cards, game.onTable)
+            elif selectedCard.isTrump() and click.isTrump() and int(selectedCard.name[1:]) > int(click.name[1:]):
+                selectedCard.tableCoords = [click.tableCoords[0], 1]
+                cardMove(selectedCard, LocalPlayer.cards, game.onTable)
+            else: raise AssertionError("Card's value is too low")
         else:
             if not LocalPlayer.canMove: raise AssertionError("You can't move right now!")
-            elif len(game.tableRow(0)) < len(game.mover.cards): raise AssertionError("The player doesn't have enough cards!")
+            elif len(game.tableRow(0)) >= len(game.mover.cards): raise AssertionError("The player doesn't have enough cards!")
             elif len(game.tableRow(0)) >= 6: raise AssertionError("Too many cards on the table!")
             else: raise AssertionError('Unable to tableClick(), unknown reason')
             #notifier.set('Unable to do that', root, uiTable.width/2-36, uiTable.height/2-3, bombard,hexc('ee1e1e'), 2)
-            dprint('Unable to do that')
-            return
     except AssertionError as e: notifier.popup(str(e), hexc('ee1e1e'))
     selectedCard.HL = False
     selectedCard = None
